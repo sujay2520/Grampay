@@ -1,0 +1,351 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "DetectifAI Voice Security API",
+    "version": "1.0.0",
+    "description": "High-throughput acoustic deepfake detection and speaker verification engine optimized for Indic BFSI and banking voicebot telephony gateways."
+  },
+  "servers": [
+    {
+      "url": "https://api.detectifai.com",
+      "description": "Production Primary Gateway"
+    },
+    {
+      "url": "https://india-south.api.detectifai.com",
+      "description": "Bangalore Low-Latency Telephony Edge"
+    }
+  ],
+  "paths": {
+    "/v1/deepfake/detect": {
+      "post": {
+        "summary": "Detect Voice Deepfakes / Synthetic Audio",
+        "description": "Analyzes raw audio buffers (PCM, WAV, OGG) using WavLM transformer acoustic representations to produce synthesis probability scores, spectral artifacts, and phase coherence analysis.",
+        "operationId": "detectDeepfake",
+        "security": [{ "ApiKeyAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/DeepfakeDetectRequest" }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "file": { "type": "string", "format": "binary" },
+                  "model": { "type": "string", "default": "wavlm-deepfake-v2" },
+                  "language": { "type": "string", "default": "kn-IN" }
+                },
+                "required": ["file"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Acoustic synthesis analysis result",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/DeepfakeDetectResponse" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/400BadRequest" },
+          "401": { "$ref": "#/components/responses/401Unauthorized" },
+          "429": { "$ref": "#/components/responses/429RateLimitExceeded" }
+        }
+      }
+    },
+    "/v1/speakers/verify": {
+      "post": {
+        "summary": "Speaker Biometric Verification",
+        "description": "Performs 1:1 acoustic cosine similarity verification between a live incoming voice stream and an enrolled speaker voiceprint template.",
+        "operationId": "verifySpeaker",
+        "security": [{ "ApiKeyAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/SpeakerVerifyRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Speaker verification evaluation",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/SpeakerVerifyResponse" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/400BadRequest" },
+          "401": { "$ref": "#/components/responses/401Unauthorized" },
+          "404": { "$ref": "#/components/responses/404SpeakerNotFound" }
+        }
+      }
+    },
+    "/v1/credits": {
+      "get": {
+        "summary": "Get Live Account Credits and Quota",
+        "description": "Retrieves the remaining balance of DetectifAI verification credits, plan allocation, consumption telemetry, and rate limits.",
+        "operationId": "getCredits",
+        "security": [{ "ApiKeyAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Current credits telemetry and rate limit quota",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CreditsBalanceResponse" },
+                "example": {
+                  "live_balance": 1750,
+                  "allocated_credits": 5000,
+                  "consumed_credits": 3250,
+                  "plan": "Enterprise-BFSI-Dedicated",
+                  "currency": "INR",
+                  "cost_per_verification_inr": 0.20,
+                  "rate_limit_per_min": 1200,
+                  "remaining_rate_limit": 1184,
+                  "expires_at": "2026-12-31T23:59:59Z",
+                  "auto_refill_enabled": false
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/401Unauthorized" }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "ApiKeyAuth": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-DetectifAI-Key"
+      }
+    },
+    "schemas": {
+      "DeepfakeDetectRequest": {
+        "type": "object",
+        "required": ["audio_payload", "encoding", "sample_rate_hz"],
+        "properties": {
+          "audio_payload": {
+            "type": "string",
+            "format": "byte",
+            "description": "Base64-encoded raw audio stream chunk (minimum 400ms recommended)."
+          },
+          "encoding": {
+            "type": "string",
+            "enum": ["LINEAR16", "MULAW", "ALAW", "OPUS", "OGG_OPUS", "WAV"],
+            "description": "Audio buffer encoding format."
+          },
+          "sample_rate_hz": {
+            "type": "integer",
+            "example": 8000,
+            "description": "Sampling rate in Hz (8000 for PSTN/GSM telephony, 16000 for VoLTE)."
+          },
+          "language_hint": {
+            "type": "string",
+            "default": "kn-IN",
+            "example": "kn-IN"
+          },
+          "model": {
+            "type": "string",
+            "default": "wavlm-deepfake-v2",
+            "enum": ["wavlm-deepfake-v2", "bilingual-indic-v1", "telephony-narrowband-v1"]
+          }
+        }
+      },
+      "DeepfakeDetectResponse": {
+        "type": "object",
+        "required": [
+          "request_id",
+          "synthesis_score",
+          "is_synthetic",
+          "confidence",
+          "latency_ms",
+          "model_version"
+        ],
+        "properties": {
+          "request_id": { "type": "string", "example": "det_98fa201b" },
+          "synthesis_score": {
+            "type": "number",
+            "format": "float",
+            "minimum": 0.0,
+            "maximum": 1.0,
+            "example": 0.884,
+            "description": "Continuous synthetic speech probability derived from WavLM acoustic transformer embeddings."
+          },
+          "is_synthetic": {
+            "type": "boolean",
+            "example": true,
+            "description": "Thresholded boolean indicator based on calibrated EER boundary."
+          },
+          "confidence": {
+            "type": "number",
+            "format": "float",
+            "minimum": 0.0,
+            "maximum": 1.0,
+            "example": 0.941
+          },
+          "latency_ms": {
+            "type": "number",
+            "format": "float",
+            "example": 142.6,
+            "description": "Processing latency within DetectifAI inference cluster in ms."
+          },
+          "model_version": {
+            "type": "string",
+            "example": "wavlm-deepfake-v2.1"
+          },
+          "acoustic_metrics": {
+            "type": "object",
+            "properties": {
+              "snr_db": { "type": "number", "example": 14.2 },
+              "high_frequency_energy_ratio": { "type": "number", "example": 0.012 },
+              "phase_jitter_detected": { "type": "boolean", "example": true },
+              "neural_vocoder_signature": {
+                "type": "string",
+                "enum": ["HiFi-GAN", "BigVGAN", "ElevenLabs-Flash", "StyleTTS2", "Natural_Human"],
+                "example": "ElevenLabs-Flash"
+              }
+            }
+          }
+        }
+      },
+      "SpeakerVerifyRequest": {
+        "type": "object",
+        "required": ["speaker_voiceprint_id", "audio_payload", "encoding", "sample_rate_hz"],
+        "properties": {
+          "speaker_voiceprint_id": {
+            "type": "string",
+            "example": "spk_ramesh_gowda_kcc998"
+          },
+          "audio_payload": {
+            "type": "string",
+            "format": "byte",
+            "description": "Base64-encoded audio chunk from current speaker session."
+          },
+          "encoding": { "type": "string", "enum": ["LINEAR16", "MULAW", "WAV", "OGG_OPUS"] },
+          "sample_rate_hz": { "type": "integer", "example": 8000 },
+          "threshold": {
+            "type": "number",
+            "default": 0.53,
+            "description": "Minimum cosine similarity threshold required for match."
+          }
+        }
+      },
+      "SpeakerVerifyResponse": {
+        "type": "object",
+        "required": [
+          "request_id",
+          "speaker_voiceprint_id",
+          "cosine_similarity",
+          "is_match",
+          "latency_ms"
+        ],
+        "properties": {
+          "request_id": { "type": "string", "example": "spk_verify_7710a" },
+          "speaker_voiceprint_id": { "type": "string", "example": "spk_ramesh_gowda_kcc998" },
+          "cosine_similarity": {
+            "type": "number",
+            "format": "float",
+            "minimum": -1.0,
+            "maximum": 1.0,
+            "example": 0.764,
+            "description": "Acoustic embedding cosine similarity against enrolled profile."
+          },
+          "is_match": { "type": "boolean", "example": true },
+          "calibrated_threshold": { "type": "number", "example": 0.53 },
+          "snr_db": { "type": "number", "example": 18.5 },
+          "latency_ms": { "type": "number", "example": 98.4 }
+        }
+      },
+      "CreditsBalanceResponse": {
+        "type": "object",
+        "required": [
+          "live_balance",
+          "allocated_credits",
+          "consumed_credits",
+          "plan",
+          "cost_per_verification_inr"
+        ],
+        "properties": {
+          "live_balance": {
+            "type": "integer",
+            "example": 1750,
+            "description": "Remaining live verification credits."
+          },
+          "allocated_credits": { "type": "integer", "example": 5000 },
+          "consumed_credits": { "type": "integer", "example": 3250 },
+          "plan": { "type": "string", "example": "Enterprise-BFSI-Dedicated" },
+          "currency": { "type": "string", "default": "INR" },
+          "cost_per_verification_inr": { "type": "number", "example": 0.20 },
+          "rate_limit_per_min": { "type": "integer", "example": 1200 },
+          "remaining_rate_limit": { "type": "integer", "example": 1184 },
+          "expires_at": { "type": "string", "format": "date-time", "example": "2026-12-31T23:59:59Z" },
+          "auto_refill_enabled": { "type": "boolean", "example": false }
+        }
+      }
+    },
+    "responses": {
+      "400BadRequest": {
+        "description": "Malformed audio payload or invalid parameters",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "error": { "type": "string", "example": "INVALID_AUDIO_HEADER" },
+                "message": { "type": "string", "example": "Audio stream chunk too short (must be >= 300ms)" }
+              }
+            }
+          }
+        }
+      },
+      "401Unauthorized": {
+        "description": "Missing or invalid API key",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "error": { "type": "string", "example": "UNAUTHORIZED" },
+                "message": { "type": "string", "example": "X-DetectifAI-Key invalid or expired" }
+              }
+            }
+          }
+        }
+      },
+      "404SpeakerNotFound": {
+        "description": "Enrolled voiceprint profile ID does not exist",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "error": { "type": "string", "example": "SPEAKER_NOT_FOUND" },
+                "message": { "type": "string", "example": "Voiceprint profile spk_xxx not enrolled" }
+              }
+            }
+          }
+        }
+      },
+      "429RateLimitExceeded": {
+        "description": "Too many requests per minute",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "error": { "type": "string", "example": "RATE_LIMIT_EXCEEDED" },
+                "retry_after_seconds": { "type": "integer", "example": 2 }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
